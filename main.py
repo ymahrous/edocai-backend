@@ -4,6 +4,7 @@ import database, models
 from sqlmodel import select
 import storage_client
 from tasks import process_document_task
+from fastapi import HTTPException
 
 app = FastAPI(title="ExtractIQ API")
 
@@ -46,3 +47,19 @@ def get_documents(session: Session = Depends(database.get_session)):
         select(models.Document).order_by(models.Document.created_at.desc())
     ).all()
     return docs
+
+@app.get("/extraction/{document_id}")
+def get_extraction(document_id: str, session: Session = Depends(database.get_session)):
+    """Fetches the specific extraction data for a single document"""
+    extraction = session.exec(
+        select(models.Extraction).where(models.Extraction.document_id == document_id)
+    ).first()
+    
+    if not extraction:
+        raise HTTPException(status_code=404, detail="Extraction not found or still processing.")
+        
+    return {
+        "document_id": extraction.document_id,
+        "extracted_data": extraction.extracted_data,
+        "confidence_score": extraction.confidence_score
+    }

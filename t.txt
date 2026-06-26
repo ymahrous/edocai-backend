@@ -1,0 +1,76 @@
+pip install @huggingface/inference
+
+# ai_extractor.py
+import os
+import json
+import fitz  # PyMuPDF
+from huggingface_inference import HfInference
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Initialize the official HF Inference Provider client
+hf = HfInference(token=os.getenv("HUGGINGFACE_TOKEN"))
+
+# We will use a great open-source document model hosted on HF
+HF_MODEL_ID = "microsoft/phi-3-vision-128k-instruct"
+
+def get_image_bytes_from_file(file_bytes: bytes) -> bytes:
+    """Converts PDF first page to a clean PNG image."""
+    if file_bytes[:4] == b'%PDF':
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        page = doc[0]
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        return pix.tobytes("png")
+    return file_bytes
+
+def extract_with_hf(image_bytes: bytes) -> dict:
+    """
+    Uses HF Image-to-Text Inference Provider.
+    Docs: https://huggingface.co/docs/inference-providers/en/providers/hf-inference#image-to-text
+    """
+    prompt = """
+    You are an expert document extractor. Look at this receipt/invoice image.
+    Extract the vendor name, total amount, and date.
+    Return ONLY valid JSON in this exact format, no other text:
+    {"vendor": "...", "total_amount": "...", "date": "..."}
+    """
+    
+    # According to HF docs, we pass the image bytes and parameters
+    result = hf.image_to_text(
+        model=HF_MODEL_ID,
+        data=image_bytes,
+        parameters={"prompt": prompt, "max_new_tokens": 200}
+    )
+    
+    # The HF SDK returns a string of the generated text
+    result_text = result.strip()
+    
+    # Clean up markdown code blocks if the model adds them
+    if "```json" in result_text:
+        result_text = result_text.split("```json")[1].split("```")[0]
+    elif "```" in result_text:
+        result_text = result_text.split("```")[1].split("```")[0]
+        
+    return json.loads(result_text)
+
+def run_ai_extraction(supabase_url: str) -> dict:
+    """Main pipeline: Downloads file and sends to HF."""
+    import requests
+    
+    # 1. Download the file from Supabase
+    response = requests.get(supabase_url)
+    file_bytes = response.content
+    
+    # 2. Convert to image if it's a PDF
+    image_bytes = get_image_bytes_from_file(file_bytes)
+    
+    # 3. Send to HuggingFace
+    print("🧠 Sending image to HuggingFace Inference API...")
+    try:
+        result = extract_with_hf(image_bytes)
+        print("✅ HuggingFace extraction succeeded!")
+        return {"data": result, "source": "huggingface_i2t", "confidence": 0.92}
+    except Exception as e:
+        print(f"❌ HuggingFace failed: {e}")
+        raise Exception("HuggingFace extraction failed")
