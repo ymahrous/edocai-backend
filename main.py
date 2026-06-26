@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="API - v1")
 
-# Add this right under: app = FastAPI(title="ExtractIQ API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # In a real enterprise app, you'd put your frontend URL here
