@@ -7,8 +7,18 @@ import storage_client
 from tasks import process_document_task
 from auth_routes import router as auth_router
 from dependencies import get_current_user
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="ExtractIQ API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
 
 @app.on_event("startup")
 def on_startup():
