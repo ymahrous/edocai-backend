@@ -72,12 +72,16 @@ def delete_account(
 ):
     documents = session.exec(select(models.Document).where(models.Document.owner_id == user.id)).all()
     usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
+    subscriptions = session.exec(select(models.Subscription).where(models.Subscription.user_id == user.id)).all()
 
     for doc in documents:
         session.delete(doc)
 
     for record in usage_records:
         session.delete(record)
+        
+    for sub in subscriptions:
+        session.delete(sub)
 
     session.delete(user)
     session.commit()
