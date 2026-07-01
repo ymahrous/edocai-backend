@@ -48,7 +48,7 @@ def login(request: LoginRequest, session: Session = Depends(database.get_session
     if not user or not auth.verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
-    token = auth.create_access_token(data={"sub": user.username})
+    token = auth.create_access_token(data={"sub": user.username, "plan": user.plan})
     return TokenResponse(access_token=token)
 
 @router.post("/change-password")
@@ -70,6 +70,15 @@ def delete_account(
     user: models.User = Depends(get_current_user),
     session: Session = Depends(database.get_session),
 ):
+    documents = session.exec(select(models.Document).where(models.Document.owner_id == user.id)).all()
+    usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
+
+    for doc in documents:
+        session.delete(doc)
+
+    for record in usage_records:
+        session.delete(record)
+
     session.delete(user)
     session.commit()
-    return None
+    return {"message": "Account deleted successfully."}

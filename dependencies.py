@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session, select
 import database, models, auth
+from datetime import date
 
 security = HTTPBearer()
 
@@ -21,3 +22,22 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
+
+def increment_usage(user_id: str):
+    """Call this AFTER a document is successfully processed to track limits."""
+    current_month = date.today().replace(day=1)
+    
+    with next(database.get_session()) as session:
+        usage = session.exec(
+            select(models.UsageRecord)
+            .where(models.UsageRecord.user_id == user_id)
+            .where(models.UsageRecord.month == current_month)
+        ).first()
+
+        if usage:
+            usage.documents_processed += 1
+        else:
+            usage = models.UsageRecord(user_id=user_id, month=current_month, documents_processed=1)
+        
+        session.add(usage)
+        session.commit()

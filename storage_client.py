@@ -25,3 +25,8 @@ def upload_to_storage(file_bytes: bytes, filename: str) -> str:
     public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
     
     return public_url
+
+def delete_from_storage(filename: str) -> None:
+    """Deletes a file from Supabase storage."""
+    bucket_name = os.getenv("SUPABASE_BUCKET_NAME")
+    supabase.storage.from_(bucket_name).remove([filename])
