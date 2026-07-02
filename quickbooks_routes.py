@@ -226,3 +226,19 @@ def get_qb_status(current_user: models.User = Depends(get_current_user)):
             select(models.QuickBooksConnection).where(models.QuickBooksConnection.user_id == current_user.id)
         ).first()
         return {"connected": qb_conn is not None}
+
+@router.delete("/disconnect")
+def disconnect_quickbooks(current_user: models.User = Depends(get_current_user)):
+    """Deletes the QuickBooks OAuth tokens for the current user."""
+    with next(database.get_session()) as session:
+        qb_conn = session.exec(
+            select(models.QuickBooksConnection).where(models.QuickBooksConnection.user_id == current_user.id)
+        ).first()
+        
+        if not qb_conn:
+            raise HTTPException(status_code=404, detail="QuickBooks is not connected.")
+
+        session.delete(qb_conn)
+        session.commit()
+
+    return {"message": "QuickBooks disconnected successfully."}
