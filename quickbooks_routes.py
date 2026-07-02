@@ -66,7 +66,7 @@ async def quickbooks_callback(
 
     # If we STILL don't have a realm_id, redirect with error
     if not realm_id:
-        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_error=missing_realm")
+        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/account?qb_error=missing_realm")
 
     # Trade the auth code for tokens
     headers = {
@@ -88,7 +88,7 @@ async def quickbooks_callback(
 
     if response.status_code != 200:
         print("QB Token Error:", response.text)
-        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_error=token_failed")
+        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/account?qb_error=token_failed")
 
     token_data = response.json()
     user_id = state 
@@ -110,7 +110,7 @@ async def quickbooks_callback(
         session.commit()
 
     # REDIRECT BACK TO FRONTEND with success parameter
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_success=true")
+    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/account?qb_success=true")
 
 def refresh_qb_token(qb_conn: models.QuickBooksConnection, session: Session):
     """Helper to refresh an expired access token using the refresh token."""
