@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlmodel import Session, select
+from sqlalchemy import delete
 from pydantic import BaseModel
 import database, models, auth
 import storage_client
@@ -72,13 +73,14 @@ def delete_account(
     session: Session = Depends(database.get_session),
 ):
     documents = session.exec(select(models.Document).where(models.Document.owner_id == user.id)).all()
+
+    if documents:
+        document_ids = [doc.id for doc in documents]
+        session.exec(delete(models.Extraction).where(models.Extraction.document_id.in_(document_ids)))
+        session.flush()
+
     usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
     subscriptions = session.exec(select(models.Subscription).where(models.Subscription.user_id == user.id)).all()
-
-    for doc in documents:
-        extractions = session.exec(select(models.Extraction).where(models.Extraction.document_id == doc.id)).all()
-        for extraction in extractions:
-            session.delete(extraction)
 
     for doc in documents:
         storage_client.delete_from_storage(doc.filename)
