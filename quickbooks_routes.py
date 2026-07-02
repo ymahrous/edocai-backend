@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlmodel import Session, select
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -49,13 +49,15 @@ def connect_quickbooks(current_user: models.User = Depends(get_current_user)):
     return {"url": auth_request_url}
 
 @router.get("/callback")
-@router.post("/callback")
 async def quickbooks_callback(
     request: Request,
     code: str, 
     state: str, 
-    realm_id: str = None # Catches realm_id if sent via URL query
+    realm_id: str = Query(None, alias="realmId")
 ):
+
+    print(request.url)
+    print(dict(request.query_params))
     # If realm_id wasn't in the URL, try to read it from the POST body
     if not realm_id:
         try:
