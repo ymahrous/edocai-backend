@@ -6,6 +6,7 @@ import os
 import database, models
 from dependencies import get_current_user
 from dotenv import load_dotenv
+from fastapi.responses import RedirectResponse
 
 load_dotenv()
 
@@ -42,10 +43,15 @@ def connect_quickbooks(current_user: models.User = Depends(get_current_user)):
     )
     return {"url": auth_request_url}
 
-
 @router.get("/callback")
-def quickbooks_callback(code: str, state: str, realm_id: str):
+def quickbooks_callback(code: str, state: str, realm_id: str = None):
     """Handles the redirect from Intuit after user authorizes."""
+    
+    # If Intuit didn't pass the realm_id in the initial redirect, we can't proceed.
+    if not realm_id:
+        # Redirect to frontend with an error message
+        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_error=missing_realm")
+
     # Trade the auth code for tokens
     headers = {
         "Accept": "application/json",
@@ -65,11 +71,10 @@ def quickbooks_callback(code: str, state: str, realm_id: str):
     )
 
     if response.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange auth code for tokens.")
+        print("QB Token Error:", response.text)
+        return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_error=token_failed")
 
     token_data = response.json()
-    
-    # Verify the state matches the user who initiated (in a real app, use a more secure state token)
     user_id = state 
 
     with next(database.get_session()) as session:
@@ -88,9 +93,8 @@ def quickbooks_callback(code: str, state: str, realm_id: str):
         session.add(qb_conn)
         session.commit()
 
-    # Redirect back to frontend settings/integrations page
-    return {"message": "QuickBooks connected successfully!"} # In practice, redirect: RedirectResponse(url="/integrations?success=true")
-
+    # REDIRECT BACK TO FRONTEND with success parameter
+    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/profile?qb_success=true")
 
 def refresh_qb_token(qb_conn: models.QuickBooksConnection, session: Session):
     """Helper to refresh an expired access token using the refresh token."""
