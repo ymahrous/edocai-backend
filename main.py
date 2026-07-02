@@ -11,6 +11,7 @@ from dependencies import get_current_user, increment_usage
 from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
+from quickbooks_routes import router as quickbooks_router
 from datetime import datetime, timezone
 
 structlog.configure(
@@ -39,3 +40,4 @@ def on_startup():
 app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(document_router)
+app.include_router(quickbooks_router)

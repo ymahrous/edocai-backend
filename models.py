@@ -1,10 +1,10 @@
 from sqlmodel import SQLModel, Field
 from typing import Optional, Dict, Any
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, Text
 from datetime import datetime, timezone
 import uuid
 from sqlalchemy import UniqueConstraint, Column, String
-from pydantic import BaseModel # <-- ADD THIS IMPORT
+from pydantic import BaseModel
 
 class CheckoutRequest(BaseModel):
     priceId: str
@@ -49,3 +49,12 @@ class UsageRecord(SQLModel, table=True):
 
     # SQLModel trick to add a composite UniqueConstraint (one record per user per month)
     __table_args__ = (UniqueConstraint("user_id", "month"),)
+
+class QuickBooksConnection(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.id", unique=True, index=True)
+    realm_id: str = Field(index=True) # The QuickBooks Company ID
+    access_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    refresh_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
