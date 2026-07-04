@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+import re
+import os
+import httpx
+import database, models
+from typing import Optional
+from pydantic import BaseModel
+from dotenv import load_dotenv
 from sqlmodel import Session, select
 from datetime import datetime, timezone
-from pydantic import BaseModel
-import httpx
-import os
-import database, models
 from dependencies import get_current_user
-from dotenv import load_dotenv
 from fastapi.responses import RedirectResponse
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
 load_dotenv()
 
