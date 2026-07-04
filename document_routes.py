@@ -8,6 +8,7 @@ from sqlalchemy import delete
 from sqlmodel import Session, select
 from tasks import process_document_task
 from datetime import datetime, timezone
+from fastapi.responses import StreamingResponse
 from dependencies import get_current_user, increment_usage
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, status, UploadFile, File
 
@@ -124,7 +125,7 @@ def get_extraction(
         "category": extraction.category if extraction.category else "Other"
     }
 
-@router.patch("/api/v1/extraction/{document_id}/category")
+@router.patch("/extraction/{document_id}/category")
 def update_category(
     document_id: str, 
     category_update: dict, 
@@ -157,17 +158,15 @@ def update_category(
 
 
 # --- TAX SUMMARY EXPORT ---
-@router.get("/api/v1/reports/tax-summary/")
+@router.get("/reports/tax-summary")
 def get_tax_summary(
     year: int, 
     session: Session = Depends(database.get_session),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Pro Gate
     if current_user.plan != "pro":
         raise HTTPException(status_code=403, detail="Tax export is a Pro feature.")
 
-    # Get all completed documents for the user in the given year that have a category
     docs = session.exec(
         select(models.Document, models.Extraction)
         .join(models.Extraction, models.Document.id == models.Extraction.document_id)
@@ -176,15 +175,13 @@ def get_tax_summary(
         .where(models.Extraction.category != None)
     ).all()
 
-    # Aggregate data by category
     summary = {}
     for doc, ext in docs:
-        # Parse the date to check the year
         raw_date = str(ext.extracted_data.get("date", ""))
         try:
             doc_year = int(raw_date.split("-")[0])
         except:
-            continue # Skip if date is unparseable
+            continue
             
         if doc_year == year:
             cat = ext.category
@@ -194,7 +191,6 @@ def get_tax_summary(
             
             summary[cat] = round(summary.get(cat, 0.0) + amount, 2)
 
-    # Generate CSV
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Category", f"Total Spend ({year})"])
