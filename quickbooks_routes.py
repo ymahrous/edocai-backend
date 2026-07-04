@@ -171,51 +171,79 @@ def sync_to_quickbooks(
         # Prepare the QuickBooks Purchase (Expense) payload
         extracted = extraction.extracted_data
         vendor_name = extracted.get("vendor", "Unknown Vendor")
+        raw_amount = str(extracted.get("total_amount", "0"))
+        raw_date = str(extracted.get("date", ""))
         
-        # Safely parse total amount (remove $ and commas)
-        total_str = str(extracted.get("total_amount", "0")).replace("$", "").replace(",", "")
+        # --- 1. ROBUST AMOUNT PARSING ---
+        # Strip everything except numbers, decimals, and minus signs
+        clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
         try:
-            total_val = float(total_str)
+            total_val = float(clean_amount)
         except ValueError:
             total_val = 0.0
 
-        # Safely parse date (QuickBooks requires YYYY-MM-DD)
-        raw_date = str(extracted.get("date", ""))
-        qb_date = raw_date # Assuming Gemini already returns YYYY-MM-DD. If not, this needs parsing.
+        # --- 2. ROBUST DATE PARSING ---
+        qb_date = None
+        try:
+            # Try to parse standard formats AI might return (e.g., YYYY-MM-DD, MM/DD/YYYY, Month DD, YYYY)
+            # If AI returns YYYY-MM-DD, this handles it.
+            if "-" in raw_date and len(raw_date) == 10:
+                qb_date = raw_date
+            else:
+                # Fallback: Try to parse with Python datetime, then convert back to YYYY-MM-DD
+                parsed_date = datetime.strptime(raw_date, "%B %d, %Y") # Adjust this mask if AI uses a different format
+                qb_date = parsed_date.strftime("%Y-%m-%d")
+        except:
+            pass # If parsing fails, qb_date remains None, and QB will default to today
 
-        # Determine Payment Type based on extracted data
+        # --- 3. DETERMINE PAYMENT TYPE ---
         payment_type = "Cash"
-        payment_method_ref = None
-        if "mastercard" in total_str.lower() or "mastercard" in vendor_name.lower() or "mastercard" in str(extracted).lower():
-            payment_type = "CreditCard"
-        elif "visa" in str(extracted).lower() or "credit card" in str(extracted).lower():
+        doc_string = str(extracted).lower()
+        if any(word in doc_string for word in ["mastercard", "visa", "credit card", "amex"]):
             payment_type = "CreditCard"
 
-        # Build the QB Payload
+        # --- 4. MAP CATEGORIES TO QUICKBOOKS ACCOUNT IDS ---
+        # QuickBooks requires an AccountRef ID. These are standard default IDs in QBO.
+        # In a perfect world (Phase 13), we query the user's chart of accounts. 
+        # For now, we guess based on the category.
+        category = str(extracted.get("category", "")).lower()
+        account_id = "41" # Default: Opening Balance Equity
+        account_name = "Opening Balance Equity"
+        
+        if "travel" in category or "airline" in category or "hotel" in category:
+            account_id = "13" 
+            account_name = "Travel"
+        elif "meal" in category or "food" in category or "restaurant" in category:
+            account_id = "24"
+            account_name = "Meals and Entertainment"
+        elif "software" in category or "subscription" in category or "saas" in category:
+            account_id = "56"
+            account_name = "Software and Subscriptions"
+        elif "office" in category or "equipment" in category or "supplies" in category:
+            account_id = "28"
+            account_name = "Office Supplies"
+
+        # --- 5. BUILD THE BULLETPROOF QB PAYLOAD ---
         qb_payload = {
-            "TxnDate": qb_date if raw_date else None, # The actual date of the transaction
             "PaymentType": payment_type,
-            "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, 
+            "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, # The funding account
             "TotalAmt": total_val,
+            "EntityRef": {"value": "1", "name": vendor_name, "type": "Vendor"}, # TYPE IS CRITICAL FOR PAYEE
             "Line": [
                 {
                     "Id": "1",
                     "Amount": total_val,
                     "DetailType": "AccountBasedExpenseLineDetail",
                     "AccountBasedExpenseLineDetail": {
-                        "AccountRef": {"value": "41"} 
+                        "AccountRef": {"value": account_id, "name": account_name} # THE ACTUAL CATEGORY
                     }
                 }
             ]
         }
 
-        # Only add EntityRef (Vendor) if it's not generic
-        if vendor_name and vendor_name != "Unknown Vendor":
-            qb_payload["EntityRef"] = {"name": vendor_name, "value": "1"} # Value 1 is a dummy vendor ID
-        
-        # Remove None values strictly required by QB API
-        if not qb_payload["TxnDate"]:
-            del qb_payload["TxnDate"]
+        # Add the date only if we successfully parsed it
+        if qb_date:
+            qb_payload["TxnDate"] = qb_date
 
         # Make Request to QuickBooks API
         url = f"{API_BASE_URL}/v3/company/{qb_conn.realm_id}/purchase?minorversion=65"

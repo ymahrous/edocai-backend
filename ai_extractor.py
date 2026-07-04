@@ -26,9 +26,20 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
     # Convert bytes to base64 string
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     
-    prompt = """Extract the vendor name, total amount, and date from this receipt. 
-    Return ONLY valid JSON in this exact format, no other text:
-    {"vendor": "...", "total_amount": "...", "date": "..."}"""
+    # prompt = """Extract the vendor name, total amount, and date from this receipt. 
+    # Return ONLY valid JSON in this exact format, no other text:
+    # {"vendor": "...", "total_amount": "...", "date": "..."}"""
+    prompt = """
+            Analyze this document and extract the following information as a JSON object:
+            {
+            "vendor": "The name of the vendor/company issuing the document",
+            "total_amount": "The final total amount due, as a string (e.g., '$1,250.00')",
+            "date": "The date of purchase/invoice in YYYY-MM-DD format",
+            "category": "Classify the spend into one of these categories: Travel, Meals, Software, Office Supplies, Equipment, or Other"
+            }
+
+            Return ONLY the JSON object.
+            """
 
     # Using the exact syntax from the Google Docs you provided
     interaction = client.interactions.create(
