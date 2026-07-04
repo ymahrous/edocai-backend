@@ -1,10 +1,10 @@
+import uuid
+from pydantic import BaseModel
 from sqlmodel import SQLModel, Field
 from typing import Optional, Dict, Any
-from sqlalchemy import Column, JSON, Text
 from datetime import datetime, timezone
-import uuid
+from sqlalchemy import Column, JSON, Text
 from sqlalchemy import UniqueConstraint, Column, String
-from pydantic import BaseModel
 
 class CheckoutRequest(BaseModel):
     priceId: str
@@ -27,8 +27,9 @@ class Document(SQLModel, table=True):
 class Extraction(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     document_id: str = Field(foreign_key="document.id")
-    extracted_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON)) # <--- CHANGE THIS LINE
+    extracted_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     confidence_score: float = 0.0
+    category: Optional[str] = Field(default=None)
 
 # --- NEW BILLING MODELS ---
 class Subscription(SQLModel, table=True):
@@ -47,14 +48,13 @@ class UsageRecord(SQLModel, table=True):
     user_id: str = Field(foreign_key="user.id", index=True)
     month: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(day=1))
     documents_processed: int = 0
-
     # SQLModel trick to add a composite UniqueConstraint (one record per user per month)
     __table_args__ = (UniqueConstraint("user_id", "month"),)
 
 class QuickBooksConnection(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     user_id: str = Field(foreign_key="user.id", unique=True, index=True)
-    realm_id: str = Field(index=True) # The QuickBooks Company ID
+    realm_id: str = Field(index=True)
     access_token: Optional[str] = Field(default=None, sa_column=Column(Text))
     refresh_token: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

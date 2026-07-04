@@ -24,12 +24,14 @@ def process_document_task(document_id: str):
             
             extracted_data = ai_result["data"]
             confidence = ai_result["confidence"]
+            category = ai_result["category"] if "category" in ai_result else "Other" # Default to "Other" if category is not provided
 
             # Save to DB
             extraction = Extraction(
                 document_id=document_id,
                 extracted_data=extracted_data,
-                confidence_score=confidence
+                confidence_score=confidence,
+                category=category
             )
             session.add(extraction)
             

@@ -35,10 +35,10 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
             "vendor": "The name of the vendor/company issuing the document",
             "total_amount": "The final total amount due, as a string (e.g., '$1,250.00')",
             "date": "The date of purchase/invoice in YYYY-MM-DD format",
-            "category": "Classify the spend into one of these categories: Travel, Meals, Software, Office Supplies, Equipment, or Other"
+            "category": "Classify the spend into EXACTLY ONE of these categories: Travel, Meals, Software, Office Supplies, Equipment, Marketing, Utilities, Rent, Insurance, Professional Services, or Other"
             }
 
-            Return ONLY the JSON object.
+            Return ONLY the valid JSON object.
             """
 
     # Using the exact syntax from the Google Docs you provided

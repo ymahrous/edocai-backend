@@ -1,16 +1,18 @@
+import re
+import io
+import csv
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, Header, status, UploadFile, File
-from sqlmodel import Session, select
-from sqlalchemy import delete
-import database, models
 import storage_client
+import database, models
+from sqlalchemy import delete
+from sqlmodel import Session, select
 from tasks import process_document_task
-from dependencies import get_current_user, increment_usage
 from datetime import datetime, timezone
+from dependencies import get_current_user, increment_usage
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, status, UploadFile, File
 
 router = APIRouter(prefix="/api/v1", tags=["document"])
 
-# UPDATED MAIN ROUTE
 @router.post("/upload/")
 def test_upload(
     file: UploadFile = File(...), 
@@ -118,5 +120,91 @@ def get_extraction(
     return {
         "document_id": extraction.document_id,
         "extracted_data": extraction.extracted_data,
-        "confidence_score": extraction.confidence_score
+        "confidence_score": extraction.confidence_score,
+        "category": extraction.category if extraction.category else "Other"
     }
+
+@router.patch("/api/v1/extraction/{document_id}/category")
+def update_category(
+    document_id: str, 
+    category_update: dict, 
+    session: Session = Depends(database.get_session),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Pro Gate
+    if current_user.plan != "pro":
+        raise HTTPException(status_code=403, detail="Tax categorization is a Pro feature.")
+        
+    extraction = session.exec(
+        select(models.Extraction).where(models.Extraction.document_id == document_id)
+    ).first()
+    
+    if not extraction:
+        raise HTTPException(status_code=404, detail="Extraction not found.")
+        
+    # Validate category against our standard list
+    valid_categories = ["Travel", "Meals", "Software", "Office Supplies", "Equipment", "Marketing", "Utilities", "Rent", "Insurance", "Professional Services", "Other"]
+    new_category = category_update.get("category")
+    
+    if new_category not in valid_categories:
+        raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {valid_categories}")
+        
+    extraction.category = new_category
+    session.add(extraction)
+    session.commit()
+    
+    return {"message": "Category updated", "category": new_category}
+
+
+# --- TAX SUMMARY EXPORT ---
+@router.get("/api/v1/reports/tax-summary/")
+def get_tax_summary(
+    year: int, 
+    session: Session = Depends(database.get_session),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Pro Gate
+    if current_user.plan != "pro":
+        raise HTTPException(status_code=403, detail="Tax export is a Pro feature.")
+
+    # Get all completed documents for the user in the given year that have a category
+    docs = session.exec(
+        select(models.Document, models.Extraction)
+        .join(models.Extraction, models.Document.id == models.Extraction.document_id)
+        .where(models.Document.owner_id == current_user.id)
+        .where(models.Document.status == "COMPLETED")
+        .where(models.Extraction.category != None)
+    ).all()
+
+    # Aggregate data by category
+    summary = {}
+    for doc, ext in docs:
+        # Parse the date to check the year
+        raw_date = str(ext.extracted_data.get("date", ""))
+        try:
+            doc_year = int(raw_date.split("-")[0])
+        except:
+            continue # Skip if date is unparseable
+            
+        if doc_year == year:
+            cat = ext.category
+            raw_amount = str(ext.extracted_data.get("total_amount", "0"))
+            clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
+            amount = float(clean_amount) if clean_amount else 0.0
+            
+            summary[cat] = round(summary.get(cat, 0.0) + amount, 2)
+
+    # Generate CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Category", f"Total Spend ({year})"])
+    for cat, total in sorted(summary.items()):
+        writer.writerow([cat, f"${total:,.2f}"])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        output, 
+        media_type="text/csv", 
+        headers={"Content-Disposition": f"attachment; filename=edocAI_Tax_Summary_{year}.csv"}
+    )
