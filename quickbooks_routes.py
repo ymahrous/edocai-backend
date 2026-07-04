@@ -230,6 +230,7 @@ def sync_to_quickbooks(
             "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, # The funding account
             "TotalAmt": total_val,
             "EntityRef": {"value": "1", "name": vendor_name, "type": "Vendor"}, # TYPE IS CRITICAL FOR PAYEE
+            "PrivateNote": f"edocAI-{document_id}", # sync status checks
             "Line": [
                 {
                     "Id": "1",
@@ -281,6 +282,41 @@ def get_qb_status(current_user: models.User = Depends(get_current_user)):
             select(models.QuickBooksConnection).where(models.QuickBooksConnection.user_id == current_user.id)
         ).first()
         return {"connected": qb_conn is not None}
+
+@router.get("/sync-status/{document_id}")
+def check_sync_status(document_id: str, current_user: models.User = Depends(get_current_user)):
+    if current_user.plan != "pro":
+        return {"synced": False}
+    
+    with next(database.get_session()) as session:
+        qb_conn = session.exec(
+            select(models.QuickBooksConnection).where(models.QuickBooksConnection.user_id == current_user.id)
+        ).first()
+        
+        if not qb_conn:
+            return {"synced": False}
+
+        # Query QuickBooks API for a Purchase that matches our document ID in the PrivateNote
+        url = f"{API_BASE_URL}/v3/company/{qb_conn.realm_id}/query?query=select * from Purchase where PrivateNote = 'edocAI-{document_id}'"
+        headers = {
+            "Authorization": f"Bearer {qb_conn.access_token}",
+            "Accept": "application/json",
+        }
+
+        response = httpx.get(url, headers=headers)
+
+        # Handle expired token
+        if response.status_code == 401:
+            refresh_qb_token(qb_conn, session)
+            headers["Authorization"] = f"Bearer {qb_conn.access_token}"
+            response = httpx.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get("QueryResponse", {}).get("Purchase", [])
+            return {"synced": len(results) > 0} # If QB returns 1 or more matches, it's synced!
+        
+        return {"synced": False}
 
 @router.delete("/disconnect")
 def disconnect_quickbooks(current_user: models.User = Depends(get_current_user)):
