@@ -11,7 +11,6 @@ if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
 engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 
 def init_db():
-    # Just create tables. No more fake admin users.
     # SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
 

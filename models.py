@@ -20,6 +20,7 @@ class Document(SQLModel, table=True):
     filename: str
     s3_url: str
     status: str = "PENDING"
+    quickbooks_synced: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     owner_id: str = Field(foreign_key="user.id", index=True)
 

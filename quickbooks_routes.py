@@ -179,10 +179,23 @@ def sync_to_quickbooks(
         except ValueError:
             total_val = 0.0
 
+        # Safely parse date (QuickBooks requires YYYY-MM-DD)
+        raw_date = str(extracted.get("date", ""))
+        qb_date = raw_date # Assuming Gemini already returns YYYY-MM-DD. If not, this needs parsing.
+
+        # Determine Payment Type based on extracted data
+        payment_type = "Cash"
+        payment_method_ref = None
+        if "mastercard" in total_str.lower() or "mastercard" in vendor_name.lower() or "mastercard" in str(extracted).lower():
+            payment_type = "CreditCard"
+        elif "visa" in str(extracted).lower() or "credit card" in str(extracted).lower():
+            payment_type = "CreditCard"
+
+        # Build the QB Payload
         qb_payload = {
-            "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, # Default account, users can map later
-            "PaymentType": "Cash",
-            "EntityRef": {"name": vendor_name},
+            "TxnDate": qb_date if raw_date else None, # The actual date of the transaction
+            "PaymentType": payment_type,
+            "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, 
             "TotalAmt": total_val,
             "Line": [
                 {
@@ -195,6 +208,14 @@ def sync_to_quickbooks(
                 }
             ]
         }
+
+        # Only add EntityRef (Vendor) if it's not generic
+        if vendor_name and vendor_name != "Unknown Vendor":
+            qb_payload["EntityRef"] = {"name": vendor_name, "value": "1"} # Value 1 is a dummy vendor ID
+        
+        # Remove None values strictly required by QB API
+        if not qb_payload["TxnDate"]:
+            del qb_payload["TxnDate"]
 
         # Make Request to QuickBooks API
         url = f"{API_BASE_URL}/v3/company/{qb_conn.realm_id}/purchase?minorversion=65"
@@ -216,6 +237,11 @@ def sync_to_quickbooks(
             error_detail = response.json().get("Fault", {}).get("Error", [{}])[0].get("Message", "Unknown QB Error")
             raise HTTPException(status_code=500, detail=f"QuickBooks Error: {error_detail}")
 
+        # --- Mark document as synced in DB ---
+        doc.quickbooks_synced = True
+        session.add(doc)
+        session.commit()
+        # ------------------------------------------
         return {"message": "Synced to QuickBooks successfully!"}
 
 @router.get("/status")
