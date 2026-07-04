@@ -229,7 +229,8 @@ def sync_to_quickbooks(
             "PaymentType": payment_type,
             "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, # The funding account
             "TotalAmt": total_val,
-            "EntityRef": {"value": "1", "name": vendor_name, "type": "Vendor"}, # TYPE IS CRITICAL FOR PAYEE
+            # "EntityRef": {"value": "1", "name": vendor_name, "type": "Vendor"}, 
+            # for now, we skip vendor mapping to avoid errors if the vendor doesn't exist in QB
             "PrivateNote": f"edocAI-{document_id}", # sync status checks
             "Line": [
                 {
