@@ -81,6 +81,7 @@ def delete_account(
 
     usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
     subscriptions = session.exec(select(models.Subscription).where(models.Subscription.user_id == user.id)).all()
+    feedbacks = session.exec(select(models.Feedback).where(models.Feedback.user_id == user.id)).all()
 
     for doc in documents:
         storage_client.delete_from_storage(doc.filename)
@@ -91,6 +92,9 @@ def delete_account(
         
     for sub in subscriptions:
         session.delete(sub)
+
+    for fb in feedbacks:
+        session.delete(fb)
 
     session.delete(user)
     session.commit()

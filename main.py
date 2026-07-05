@@ -1,18 +1,19 @@
 import structlog
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
-from sqlmodel import Session, select
-from sqlalchemy import delete
+import storage_client
 import database, models
 from sqlmodel import select
-import storage_client
+from sqlalchemy import delete
+from sqlmodel import Session, select
+from datetime import datetime, timezone
 from tasks import process_document_task
 from auth_routes import router as auth_router
-from dependencies import get_current_user, increment_usage
 from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
+from feedback_routes import router as feedback_router
 from quickbooks_routes import router as quickbooks_router
-from datetime import datetime, timezone
+from dependencies import get_current_user, increment_usage
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
 
 structlog.configure(
     processors=[
@@ -40,4 +41,5 @@ def on_startup():
 app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(document_router)
+app.include_router(feedback_router)
 app.include_router(quickbooks_router)

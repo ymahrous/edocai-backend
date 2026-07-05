@@ -60,3 +60,10 @@ class QuickBooksConnection(SQLModel, table=True):
     refresh_token: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Feedback(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: Optional[str] = Field(default=None, foreign_key="user.id", index=True) # Optional if logged out
+    type: str = "Suggestion"
+    message: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
