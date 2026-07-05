@@ -23,7 +23,6 @@ def process_document_task(document_id: str):
             
             extracted_data = ai_result["data"]
             confidence = ai_result["confidence"]
-            
             category = extracted_data.get("category", "Other")
 
             extraction = Extraction(
@@ -33,9 +32,11 @@ def process_document_task(document_id: str):
                 category=category
             )
             session.add(extraction)
+            
+            document.status = "COMPLETED"
+            session.add(document)
             session.commit()
 
-            # run the duplicate/anomaly detection.
             if extracted_data.get("vendor"):
                 flags = check_for_duplicates(
                     current_user_id=document.owner_id,
@@ -49,11 +50,7 @@ def process_document_task(document_id: str):
                     session.add(document)
                     session.commit()
 
-            document.status = "COMPLETED"
-            session.add(document)
-            session.commit()
-
-            print(f"✅ Successfully processed document: {document_id} via {ai_result.get('source', 'AI')}")
+            print(f"✅ Successfully processed document: {document_id}")
             return {"status": "success", "document_id": document_id}
 
         except Exception as e:

@@ -40,10 +40,20 @@ def check_for_duplicates(current_user_id: str, extraction_data: dict, current_do
         except ValueError:
             ext_amount = 0.0
 
+        # DEBUG PRINTS
+        print(f"--- Comparing Docs ---")
+        print(f"Current: Vendor='{vendor.lower()}', Amount={amount}")
+        print(f"Existing: Vendor='{ext_vendor}', Amount={ext_amount}")
+
         # Fuzzy match vendor (one contains the other) and exact match amount
-        if (vendor.lower() in ext_vendor or ext_vendor in vendor.lower()) and amount == ext_amount:
+        vendor_match = (vendor.lower() in ext_vendor or ext_vendor in vendor.lower())
+        amount_match = (amount == ext_amount)
+
+        print(f"Vendor Match: {vendor_match} | Amount Match: {amount_match}")
+
+        if vendor_match and amount_match:
             flags.append("possible_duplicate")
-            break # One flag is enough
+            break 
 
     # 2. ANOMALY CHECK: Amount is 3x higher than the historical average for this vendor
     all_vendor_docs = session.exec(
