@@ -1,10 +1,9 @@
-# tasks.py
-import time
-from sqlmodel import Session, select
-from database import engine
-from models import Document, Extraction
-from celery_app import celery_app
 import ai_extractor
+from database import engine
+from sqlmodel import Session
+from celery_app import celery_app
+from models import Document, Extraction
+from detection import check_for_duplicates
 
 @celery_app.task
 def process_document_task(document_id: str):
@@ -24,9 +23,9 @@ def process_document_task(document_id: str):
             
             extracted_data = ai_result["data"]
             confidence = ai_result["confidence"]
-            category = ai_result["category"] if "category" in ai_result else "Other" # Default to "Other" if category is not provided
+            
+            category = extracted_data.get("category", "Other")
 
-            # Save to DB
             extraction = Extraction(
                 document_id=document_id,
                 extracted_data=extracted_data,
@@ -34,12 +33,27 @@ def process_document_task(document_id: str):
                 category=category
             )
             session.add(extraction)
-            
+            session.commit()
+
+            # run the duplicate/anomaly detection.
+            if extracted_data.get("vendor"):
+                flags = check_for_duplicates(
+                    current_user_id=document.owner_id,
+                    extraction_data=extracted_data,
+                    current_doc_id=document.id,
+                    session=session
+                )
+                
+                if flags:
+                    document.flags = ",".join(flags)
+                    session.add(document)
+                    session.commit()
+
             document.status = "COMPLETED"
             session.add(document)
             session.commit()
 
-            print(f"✅ Successfully processed document: {document_id} via {ai_result['source']}")
+            print(f"✅ Successfully processed document: {document_id} via {ai_result.get('source', 'AI')}")
             return {"status": "success", "document_id": document_id}
 
         except Exception as e:
