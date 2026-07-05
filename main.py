@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
 from feedback_routes import router as feedback_router
+from vendor.vendor_routes import router as vendor_router
 from quickbooks_routes import router as quickbooks_router
 from dependencies import get_current_user, increment_usage
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
@@ -39,6 +40,7 @@ def on_startup():
     logger.info("edocAI API started successfully.")
 
 app.include_router(auth_router)
+app.include_router(vendor_router)
 app.include_router(billing_router)
 app.include_router(document_router)
 app.include_router(feedback_router)

@@ -1,6 +1,7 @@
 import uuid
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field
+from typing import List
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy import Column, JSON, Text
@@ -31,8 +32,9 @@ class Extraction(SQLModel, table=True):
     extracted_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     confidence_score: float = 0.0
     category: Optional[str] = Field(default=None)
+    vendor_id: Optional[str] = Field(default=None, foreign_key="vendor.id", index=True)
 
-# --- NEW BILLING MODELS ---
+# --- BILLING MODELS ---
 class Subscription(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     user_id: str = Field(foreign_key="user.id", unique=True, index=True)
@@ -67,3 +69,11 @@ class Feedback(SQLModel, table=True):
     type: str = "Suggestion"
     message: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Vendor(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    canonical_name: str = Field(index=True) # e.g., "Amazon"
+    aliases: List[str] = Field(default=[], sa_column=Column(JSON)) # e.g., ["AMZN", "Amazon.com"]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    __table_args__ = (UniqueConstraint("user_id", "canonical_name"),)

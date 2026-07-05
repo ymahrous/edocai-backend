@@ -1,9 +1,11 @@
 import ai_extractor
 from database import engine
+from typing import List
 from sqlmodel import Session
 from celery_app import celery_app
 from models import Document, Extraction
 from detection import check_for_duplicates
+from vendor.vendor_utils import match_or_create_vendor
 
 @celery_app.task
 def process_document_task(document_id: str):
@@ -25,11 +27,23 @@ def process_document_task(document_id: str):
             confidence = ai_result["confidence"]
             category = extracted_data.get("category", "Other")
 
+            # --- NEW: Vendor Intelligence Matching ---
+            vendor_id = None
+            raw_vendor_name = extracted_data.get("vendor") # Adjust this key if your Gemini prompt outputs something like "vendor_name"
+            
+            if raw_vendor_name:
+                # This will fuzzy match an existing vendor OR create a new one automatically
+                vendor = match_or_create_vendor(session, document.owner_id, raw_vendor_name)
+                if vendor:
+                    vendor_id = vendor.id
+            # ----------------------------------------
+
             extraction = Extraction(
                 document_id=document_id,
                 extracted_data=extracted_data,
                 confidence_score=confidence,
-                category=category
+                category=category,
+                vendor_id=vendor_id # NEW: Save the matched vendor ID
             )
             session.add(extraction)
             
