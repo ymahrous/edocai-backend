@@ -14,6 +14,7 @@ from feedback_routes import router as feedback_router
 from vendor.vendor_routes import router as vendor_router
 from quickbooks_routes import router as quickbooks_router
 from dependencies import get_current_user, increment_usage
+from analytics.analytics_routes import router as analytics_router
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
 
 structlog.configure(
@@ -44,4 +45,5 @@ app.include_router(vendor_router)
 app.include_router(billing_router)
 app.include_router(document_router)
 app.include_router(feedback_router)
+app.include_router(analytics_router)
 app.include_router(quickbooks_router)
