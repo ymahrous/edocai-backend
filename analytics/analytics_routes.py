@@ -1,21 +1,46 @@
-import database, models
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from datetime import datetime, timezone
+import database, models
 from dependencies import get_current_user
-from fastapi import APIRouter, Depends, HTTPException, Query
+import re
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 
 def get_amount(extracted_data: dict) -> float:
-    try:
-        amount_str = extracted_data.get("total_amount", "0")
-        if isinstance(amount_str, (int, float)): return float(amount_str)
-        return float(str(amount_str).replace("$", "").replace(",", "").strip())
-    except (ValueError, TypeError):
-        return 0.0
+    raw_val = extracted_data.get("total_amount", "0")
+    if isinstance(raw_val, (int, float)): return float(raw_val)
+    if isinstance(raw_val, str):
+        cleaned = re.sub(r"[^\d.]", "", raw_val)
+        try: return float(cleaned)
+        except ValueError: return 0.0
+    return 0.0
+
+def parse_invoice_date(extracted_data: dict) -> datetime:
+    """Tries to parse the invoice date from JSON. Falls back to upload date."""
+    raw_date = extracted_data.get("date")
+    if not raw_date:
+        return None
+    
+    if isinstance(raw_date, datetime):
+        return raw_date.replace(tzinfo=timezone.utc)
+        
+    # Try common formats: YYYY-MM-DD, MM/DD/YYYY, etc.
+    formats_to_try = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"]
+    if isinstance(raw_date, str):
+        # Strip time components if they exist (e.g., "2023-10-27T00:00:00")
+        clean_date_str = raw_date.split("T")[0].split(" ")[0]
+        
+        for fmt in formats_to_try:
+            try:
+                dt = datetime.strptime(clean_date_str, fmt)
+                return dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    return None
 
 def base_query(user_id: str, session: Session, year: int, month: int = None):
-    """Helper to build the base query with date filtering"""
+    """Helper to build the base query filtering by INVOICE date"""
     stmt = (
         select(models.Extraction, models.Document)
         .join(models.Document, models.Extraction.document_id == models.Document.id)
@@ -23,21 +48,22 @@ def base_query(user_id: str, session: Session, year: int, month: int = None):
         .where(models.Document.status == "COMPLETED")
     )
     
-    # Filter by Year (Required)
-    start_of_year = datetime(year, 1, 1, tzinfo=timezone.utc)
-    end_of_year = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-    stmt = stmt.where(models.Document.created_at >= start_of_year, models.Document.created_at < end_of_year)
+    # Fetch results and filter by parsed invoice date in Python 
+    # (SQLalchemy JSON querying across SQLite/Postgres is unreliable, so we do it in memory)
+    results = session.exec(stmt).all()
+    filtered_results = []
     
-    # Filter by Month (Optional)
-    if month and 1 <= month <= 12:
-        start_of_month = datetime(year, month, 1, tzinfo=timezone.utc)
-        if month == 12:
-            end_of_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-        else:
-            end_of_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-        stmt = stmt.where(models.Document.created_at >= start_of_month, models.Document.created_at < end_of_month)
+    for ext, doc in results:
+        inv_date = parse_invoice_date(ext.extracted_data)
         
-    return session.exec(stmt).all()
+        # If no invoice date, fall back to the document upload date
+        check_date = inv_date if inv_date else doc.created_at
+        
+        if check_date.year == year:
+            if month is None or check_date.month == month:
+                filtered_results.append((ext, doc))
+                
+    return filtered_results
 
 @router.get("/spend-by-category")
 def get_spend_by_category(
@@ -91,7 +117,10 @@ def get_monthly_trend(
     extractions = base_query(current_user.id, session, year)
     month_map = {}
     for ext, doc in extractions:
-        month_key = doc.created_at.strftime("%Y-%m")
+        inv_date = parse_invoice_date(ext.extracted_data)
+        check_date = inv_date if inv_date else doc.created_at
+        
+        month_key = check_date.strftime("%Y-%m")
         month_map[month_key] = month_map.get(month_key, 0) + get_amount(ext.extracted_data)
 
     sorted_months = sorted(month_map.items())
