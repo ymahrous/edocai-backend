@@ -12,11 +12,7 @@ def get_vendors(
     session: Session = Depends(database.get_session),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Fetch all vendors for the current user"""
-    vendors = session.exec(
-        select(models.Vendor).where(models.Vendor.user_id == current_user.id)
-    ).all()
-    return vendors
+    return session.exec(select(models.Vendor).where(models.Vendor.user_id == current_user.id)).all()
 
 class RenameVendorRequest(BaseModel):
     new_name: str
@@ -28,18 +24,36 @@ def rename_vendor(
     session: Session = Depends(database.get_session),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Rename the canonical name of a vendor"""
     vendor = session.get(models.Vendor, vendor_id)
     if not vendor or vendor.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Add the old canonical name to aliases so we still match it on future uploads
-    if vendor.canonical_name not in vendor.aliases:
-        vendor.aliases.append(vendor.canonical_name)
-        
+    old_name = vendor.canonical_name
+
+    # Add old name to aliases if not already there
+    if old_name not in vendor.aliases:
+        vendor.aliases.append(old_name)
+    
     vendor.canonical_name = req.new_name
+    
+    # FIX 1: Force SQLModel to see the JSON mutation by re-assigning the list
+    vendor.aliases = vendor.aliases 
+    
     session.add(vendor)
+
+    # FIX 2: Update all linked Extractions' JSON data to reflect the new name
+    extractions = session.exec(
+        select(models.Extraction).where(models.Extraction.vendor_id == vendor.id)
+    ).all()
+    
+    for ext in extractions:
+        ext.extracted_data["vendor"] = req.new_name
+        # Force SQLModel to see the JSON mutation
+        ext.extracted_data = ext.extracted_data 
+        session.add(ext)
+
     session.commit()
+    session.refresh(vendor)
     return vendor
 
 class MergeVendorsRequest(BaseModel):
@@ -52,32 +66,38 @@ def merge_vendors(
     session: Session = Depends(database.get_session),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Merges source vendor into target vendor. Target survives."""
     source = session.get(models.Vendor, source_vendor_id)
     target = session.get(models.Vendor, req.target_vendor_id)
 
     if not source or not target or source.user_id != current_user.id or target.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Vendor(s) not found")
 
-    # 1. Move all aliases from source to target
+    # move aliases from source to target
     for alias in source.aliases:
         if alias not in target.aliases and alias.lower() != target.canonical_name.lower():
             target.aliases.append(alias)
     
-    # 2. Add source canonical name to target aliases
+    # add source canonical name to target aliases
     if source.canonical_name not in target.aliases and source.canonical_name.lower() != target.canonical_name.lower():
         target.aliases.append(source.canonical_name)
 
-    # 3. Re-assign all Extractions linked to source over to target
+    # force SQLModel JSON mutation detection
+    target.aliases = target.aliases
+    session.add(target)
+
+    # 2. re-assign Extractions to target AND update their JSON vendor string
     extractions = session.exec(
         select(models.Extraction).where(models.Extraction.vendor_id == source.id)
     ).all()
     for ext in extractions:
         ext.vendor_id = target.id
+        ext.extracted_data["vendor"] = target.canonical_name
+        ext.extracted_data = ext.extracted_data # force JSON mutation
         session.add(ext)
 
-    # 4. Delete the source vendor
+    # 3. Delete source
     session.delete(source)
+    
     session.commit()
     session.refresh(target)
     
