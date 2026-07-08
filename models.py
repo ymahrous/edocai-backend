@@ -1,6 +1,6 @@
 import uuid
 from pydantic import BaseModel
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Relationship
 from typing import List
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -33,6 +33,7 @@ class Extraction(SQLModel, table=True):
     confidence_score: float = 0.0
     category: Optional[str] = Field(default=None)
     vendor_id: Optional[str] = Field(default=None, foreign_key="vendor.id", index=True)
+    vendor: Optional["Vendor"] = Relationship()
 
 # --- BILLING MODELS ---
 class Subscription(SQLModel, table=True):
@@ -77,3 +78,23 @@ class Vendor(SQLModel, table=True):
     aliases: List[str] = Field(default=[], sa_column=Column(JSON)) # e.g., ["AMZN", "Amazon.com"]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     __table_args__ = (UniqueConstraint("user_id", "canonical_name"),)
+
+class VendorRead(BaseModel):
+    id: str
+    canonical_name: str
+    aliases: List[str]
+
+    class Config:
+        from_attributes = True
+
+class ExtractionWithVendor(BaseModel):
+    id: str
+    document_id: str
+    extracted_data: Dict[str, Any]
+    confidence_score: float
+    category: Optional[str] = None
+    vendor_id: Optional[str] = None
+    vendor: Optional[VendorRead] = None # The nested vendor object!
+
+    class Config:
+        from_attributes = True

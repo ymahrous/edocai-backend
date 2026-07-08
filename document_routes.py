@@ -105,7 +105,7 @@ def delete_document(
 
     return None
 
-@router.get("/extraction/{document_id}")
+@router.get("/extraction/{document_id}", response_model=models.ExtractionWithVendor)
 def get_extraction(
     document_id: str, 
     session: Session = Depends(database.get_session),
@@ -118,12 +118,9 @@ def get_extraction(
     if not extraction:
         raise HTTPException(status_code=404, detail="Extraction not found or still processing.")
         
-    return {
-        "document_id": extraction.document_id,
-        "extracted_data": extraction.extracted_data,
-        "confidence_score": extraction.confidence_score,
-        "category": extraction.category if extraction.category else "Other"
-    }
+    # Because of Relationship(), extraction.vendor is automatically populated!
+    # FastAPI uses ExtractionWithVendor to serialize it perfectly.
+    return extraction 
 
 @router.patch("/extraction/{document_id}/category")
 def update_category(
