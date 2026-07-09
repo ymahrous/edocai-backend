@@ -1,3 +1,4 @@
+import os
 import resend
 import storage_client
 from sqlalchemy import delete
