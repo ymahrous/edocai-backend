@@ -4,6 +4,7 @@ import base64
 import fitz  # PyMuPDF
 from google import genai
 from dotenv import load_dotenv
+from google.genai import types
 
 load_dotenv()
 
@@ -42,20 +43,19 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
             """
 
     # Using the exact syntax from the Google Docs you provided
-    interaction = client.interactions.create(
-        model="gemini-2.5-flash",  # Fast, free, and excellent at vision
-        input=[
-            {"type": "text", "text": prompt},
-            {
-                "type": "image",
-                "data": b64_image,
-                "mime_type": "image/png"
-            }
+    interaction = client.models.generate_content(
+        model="gemini-3.5-flash",
+        contents=[
+            prompt,
+            types.Part.from_bytes(
+                data=image_bytes,  # Pass raw bytes directly, no base64 needed!
+                mime_type="image/png"
+            )
         ]
     )
     
     # The SDK gives us the text directly via .output_text!
-    result_text = interaction.output_text
+    result_text = interaction.text
     
     # Clean up markdown code blocks just in case
     if "```json" in result_text:
