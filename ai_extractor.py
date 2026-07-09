@@ -42,20 +42,19 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
             """
 
     # Using the exact syntax from the Google Docs you provided
-    interaction = client.interactions.create(
-        model="gemini-3.5-flash",  # Fast, free, and excellent at vision
-        input=[
-            {"type": "text", "text": prompt},
+    interaction = client.models.generate_content(
+        model="gemini-3.5-flash",
+        contents=[
+            prompt,
             {
-                "type": "image",
-                "data": b64_image,
-                "mime_type": "image/png"
+                "mime_type": "image/png",
+                "data": b64_image
             }
         ]
     )
     
     # The SDK gives us the text directly via .output_text!
-    result_text = interaction.output_text
+    result_text = interaction.text
     
     # Clean up markdown code blocks just in case
     if "```json" in result_text:
