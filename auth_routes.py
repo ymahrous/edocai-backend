@@ -76,37 +76,51 @@ def delete_account(
     session: Session = Depends(database.get_session),
 ):
 
-    vendors = session.exec(select(models.Vendor).where(models.Vendor.user_id == user.id)).all()
-    for vendor in vendors:
-        session.delete(vendor)
+    documents = session.exec(
+        select(models.Document).where(models.Document.owner_id == user.id)
+    ).all()
 
-    documents = session.exec(select(models.Document).where(models.Document.owner_id == user.id)).all()
+    document_ids = [doc.id for doc in documents]
 
-    if documents:
-        document_ids = [doc.id for doc in documents]
-        session.exec(delete(models.Extraction).where(models.Extraction.document_id.in_(document_ids)))
-        session.flush()
-
-    usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
-    subscriptions = session.exec(select(models.Subscription).where(models.Subscription.user_id == user.id)).all()
-    feedbacks = session.exec(select(models.Feedback).where(models.Feedback.user_id == user.id)).all()
-    password_reset_tokens = session.exec(select(models.PasswordResetToken).where(models.PasswordResetToken.user_id == user.id)).all()
-
+    # Delete files from storage first
     for doc in documents:
         storage_client.delete_from_storage(doc.filename)
-        session.delete(doc)
 
-    for record in usage_records:
-        session.delete(record)
-        
-    for sub in subscriptions:
-        session.delete(sub)
+    # Delete dependent rows
+    if document_ids:
+        session.exec(
+            delete(models.Extraction).where(
+                models.Extraction.document_id.in_(document_ids)
+            )
+        )
 
-    for fb in feedbacks:
-        session.delete(fb)
-    
-    for token in password_reset_tokens:
-        session.delete(token)
+    session.exec(
+        delete(models.Document).where(models.Document.owner_id == user.id)
+    )
+
+    session.exec(
+        delete(models.Vendor).where(models.Vendor.user_id == user.id)
+    )
+
+    session.exec(
+        delete(models.UsageRecord).where(models.UsageRecord.user_id == user.id)
+    )
+
+    session.exec(
+        delete(models.Subscription).where(models.Subscription.user_id == user.id)
+    )
+
+    session.exec(
+        delete(models.Feedback).where(models.Feedback.user_id == user.id)
+    )
+
+    session.exec(
+        delete(models.PasswordResetToken).where(
+            models.PasswordResetToken.user_id == user.id
+        )
+    )
+
+    session.flush()
 
     session.delete(user)
     session.commit()
