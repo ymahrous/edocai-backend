@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
-from jose import JWTError, jwt
-import bcrypt
 import os
+import bcrypt
+import secrets
+from jose import JWTError, jwt
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -31,3 +32,7 @@ def decode_access_token(token: str):
         return payload
     except JWTError:
         return None
+
+def generate_password_reset_token() -> str:
+    """Generates a cryptographically secure, random token."""
+    return secrets.token_urlsafe(32)
