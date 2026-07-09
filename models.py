@@ -3,9 +3,9 @@ from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
 from typing import List
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone
 from sqlalchemy import Column, JSON, Text
-from sqlalchemy import UniqueConstraint, Column, String
+from datetime import datetime, timezone, timedelta
+from sqlalchemy import UniqueConstraint, Column, String, Boolean, Integer
 
 class CheckoutRequest(BaseModel):
     priceId: str
@@ -98,3 +98,10 @@ class ExtractionWithVendor(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PasswordResetToken(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    token: str = Field(unique=True, index=True)
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=1))
+    used: bool = Field(default=False, sa_column=Column(Boolean, default=False, server_default="false", nullable=False))
