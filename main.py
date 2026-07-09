@@ -27,14 +27,18 @@ logger = structlog.get_logger("edocai.api")
 
 app = FastAPI(title="edocAI API")
 
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS")
+origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,  # Locked down to specific domains
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"],
     expose_headers=["*"]
 )
+
 
 @app.on_event("startup")
 def on_startup():
