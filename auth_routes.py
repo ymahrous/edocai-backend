@@ -187,7 +187,7 @@ def reset_password(
         if db_token.used:
             raise HTTPException(status_code=400, detail="Token has already been used.")
             
-        if db_token.expires_at < datetime.now(timezone.utc):
+        if db_token.expires_at < datetime.utcnow():
             raise HTTPException(status_code=400, detail="Token has expired.")
             
         # 3. Find the user and update password
