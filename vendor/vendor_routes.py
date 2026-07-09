@@ -3,6 +3,7 @@ from typing import List
 from pydantic import BaseModel
 from sqlmodel import Session, select
 from dependencies import get_current_user
+from sqlalchemy.orm.attributes import flag_modified
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/api/v1/vendors", tags=["vendors"])
@@ -33,23 +34,17 @@ def rename_vendor(
     # Add old name to aliases if not already there
     if old_name not in vendor.aliases:
         vendor.aliases.append(old_name)
+        flag_modified(vendor, "aliases")
     
     vendor.canonical_name = req.new_name
-    
-    # FIX 1: Force SQLModel to see the JSON mutation by re-assigning the list
-    vendor.aliases = vendor.aliases 
-    
     session.add(vendor)
 
-    # FIX 2: Update all linked Extractions' JSON data to reflect the new name
     extractions = session.exec(
         select(models.Extraction).where(models.Extraction.vendor_id == vendor.id)
     ).all()
-    
     for ext in extractions:
         ext.extracted_data["vendor"] = req.new_name
-        # Force SQLModel to see the JSON mutation
-        ext.extracted_data = ext.extracted_data 
+        flag_modified(ext, "extracted_data")
         session.add(ext)
 
     session.commit()
@@ -81,8 +76,7 @@ def merge_vendors(
     if source.canonical_name not in target.aliases and source.canonical_name.lower() != target.canonical_name.lower():
         target.aliases.append(source.canonical_name)
 
-    # force SQLModel JSON mutation detection
-    target.aliases = target.aliases
+    flag_modified(target, "aliases")
     session.add(target)
 
     # 2. re-assign Extractions to target AND update their JSON vendor string
@@ -92,7 +86,7 @@ def merge_vendors(
     for ext in extractions:
         ext.vendor_id = target.id
         ext.extracted_data["vendor"] = target.canonical_name
-        ext.extracted_data = ext.extracted_data # force JSON mutation
+        flag_modified(ext, "extracted_data")
         session.add(ext)
 
     # 3. Delete source
