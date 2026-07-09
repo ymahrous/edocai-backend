@@ -43,7 +43,7 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
 
     # Using the exact syntax from the Google Docs you provided
     interaction = client.interactions.create(
-        model="gemini-2.5-flash",  # Fast, free, and excellent at vision
+        model="gemini-3.5-flash",  # Fast, free, and excellent at vision
         input=[
             {"type": "text", "text": prompt},
             {
@@ -77,11 +77,11 @@ def run_ai_extraction(supabase_url: str) -> dict:
     image_bytes = get_image_bytes_from_file(file_bytes)
     
     # 3. Send to Google
-    print("🧠 Sending image to Google Gemini 2.5 Flash...")
+    print("🧠 Sending image to Google Gemini 3.5 Flash...")
     try:
         result = extract_with_google_gemini(image_bytes)
         print("✅ Google Gemini extraction succeeded!")
-        return {"data": result, "source": "google_gemini_2.5_flash", "confidence": 0.98}
+        return {"data": result, "source": "google_gemini_3.5_flash", "confidence": 0.98}
     except Exception as e:
         print(f"❌ Google Gemini failed: {e}")
         raise Exception("Extraction failed")
