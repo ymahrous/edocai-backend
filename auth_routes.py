@@ -75,6 +75,11 @@ def delete_account(
     user: models.User = Depends(get_current_user),
     session: Session = Depends(database.get_session),
 ):
+
+    vendors = session.exec(select(models.Vendor).where(models.Vendor.user_id == user.id)).all()
+    for vendor in vendors:
+        session.delete(vendor)
+
     documents = session.exec(select(models.Document).where(models.Document.owner_id == user.id)).all()
 
     if documents:
@@ -85,7 +90,6 @@ def delete_account(
     usage_records = session.exec(select(models.UsageRecord).where(models.UsageRecord.user_id == user.id)).all()
     subscriptions = session.exec(select(models.Subscription).where(models.Subscription.user_id == user.id)).all()
     feedbacks = session.exec(select(models.Feedback).where(models.Feedback.user_id == user.id)).all()
-    vendors = session.exec(select(models.Vendor).where(models.Vendor.user_id == user.id)).all()
     password_reset_tokens = session.exec(select(models.PasswordResetToken).where(models.PasswordResetToken.user_id == user.id)).all()
 
     for doc in documents:
@@ -100,9 +104,6 @@ def delete_account(
 
     for fb in feedbacks:
         session.delete(fb)
-
-    for vendor in vendors:
-        session.delete(vendor)
     
     for token in password_reset_tokens:
         session.delete(token)
