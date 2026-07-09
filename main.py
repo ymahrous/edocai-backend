@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from datetime import datetime, timezone
 from tasks import process_document_task
 from auth_routes import router as auth_router
+from stats.stats_routes import router as stats_router
 from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
@@ -41,6 +42,7 @@ def on_startup():
     logger.info("edocAI API started successfully.")
 
 app.include_router(auth_router)
+app.include_router(stats_router)
 app.include_router(vendor_router)
 app.include_router(billing_router)
 app.include_router(document_router)
