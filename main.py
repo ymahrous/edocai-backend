@@ -8,11 +8,11 @@ from sqlmodel import Session, select
 from datetime import datetime, timezone
 from tasks import process_document_task
 from auth_routes import router as auth_router
-from stats.stats_routes import router as stats_router
 from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
 from feedback_routes import router as feedback_router
+from stats.stats_routes import router as stats_router
 from vendor.vendor_routes import router as vendor_router
 from quickbooks_routes import router as quickbooks_router
 from dependencies import get_current_user, increment_usage
@@ -33,7 +33,7 @@ origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Locked down to specific domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"],
