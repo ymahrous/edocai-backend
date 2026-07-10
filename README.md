@@ -47,14 +47,14 @@ Client uploads file
                                    │                 │
                                    │  1. Download    │
                                    │  2. Rasterize   │──▶ PyMuPDF (PDF → PNG)
-                                   │  3. AI Extract  │──▶ Gemini 2.5 Flash (vision)
+                                   │  3. AI Extract  │──▶ Gemini 3.5 flash (vision)
                                    │  4. COMPLETED   │
                                    └─────────────────┘
 ```
 
 ### AI Extraction Pipeline
 
-The worker downloads the uploaded file from object storage. If it's a PDF, the first page is rasterized into a high-resolution PNG using PyMuPDF; image files pass through unchanged. The resulting image is sent to **Google Gemini 2.5 Flash** via the Interactions API for vision-based extraction, returning strictly typed JSON (`vendor`, `total_amount`, `date`).
+The worker downloads the uploaded file from object storage. If it's a PDF, the first page is rasterized into a high-resolution PNG using PyMuPDF; image files pass through unchanged. The resulting image is sent to **Google Gemini 3.5 flash** via the Interactions API for vision-based extraction, returning strictly typed JSON (`vendor`, `total_amount`, `date`).
 
 If extraction fails for any reason, the document's status is set to `FAILED` and the error is logged — there is currently no secondary extraction strategy.
 
