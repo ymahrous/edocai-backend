@@ -5,7 +5,7 @@ from typing import List
 from typing import Optional, Dict, Any
 from sqlalchemy import Column, JSON, Text
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import UniqueConstraint, Column, String, Boolean, Integer
+from sqlalchemy import UniqueConstraint, Column, String, Boolean, Integer, DateTime, func
 
 class CheckoutRequest(BaseModel):
     priceId: str
@@ -15,6 +15,11 @@ class User(SQLModel, table=True):
     username: str = Field(unique=True, index=True)
     hashed_password: str
     plan: str = Field(sa_column=Column(String, default="free", server_default="free", nullable=False))
+    # added for admin dashboard analytics
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
 
 class Document(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)

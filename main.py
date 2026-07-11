@@ -11,6 +11,7 @@ from auth_routes import router as auth_router
 from fastapi.middleware.cors import CORSMiddleware
 from billing_routes import router as billing_router
 from document_routes import router as document_router
+from admin.admin_routes import router as admin_router
 from feedback_routes import router as feedback_router
 from stats.stats_routes import router as stats_router
 from vendor.vendor_routes import router as vendor_router
@@ -33,7 +34,7 @@ origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # origins
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"],
@@ -47,6 +48,7 @@ def on_startup():
     logger.info("edocAI API started successfully.")
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(stats_router)
 app.include_router(vendor_router)
 app.include_router(billing_router)
