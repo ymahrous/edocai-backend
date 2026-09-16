@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Main Pipeline
 
 on:
   push:
@@ -76,28 +76,3 @@ jobs:
       - name: Run tests
         run: |
           python -m pytest tests/ -v --tb=short
-
-  deploy:
-    name: Deploy to Railway
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: |
-          curl -fsSL https://railway.app/install.sh | sh
-          echo "$HOME/.railway/bin" >> $GITHUB_PATH
-
-      - name: Login to Railway
-        run: |
-          railway login --token ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy to Railway
-        run: |
-          railway up --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
