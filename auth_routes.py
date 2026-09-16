@@ -6,6 +6,7 @@ import database, models, auth
 from pydantic import BaseModel
 from sqlmodel import Session, select
 from datetime import datetime, timezone
+from typing import Optional
 from dependencies import get_current_user
 from fastapi import APIRouter, HTTPException, Depends, status, Body
 
@@ -26,6 +27,10 @@ class ChangePasswordRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+# Settings models - use from models.py
+UserSettingsUpdate = models.UserSettingsUpdate
+UserSettingsRead = models.UserSettingsRead
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 def signup(request: SignupRequest, session: Session = Depends(database.get_session)):
@@ -198,29 +203,66 @@ def reset_password(
         db_token = session.exec(
             select(models.PasswordResetToken).where(models.PasswordResetToken.token == token)
         ).first()
-        
+
         if not db_token:
             raise HTTPException(status_code=400, detail="Invalid or expired token.")
-            
+
         # 2. Check if already used or expired
         if db_token.used:
             raise HTTPException(status_code=400, detail="Token has already been used.")
-            
+
         if db_token.expires_at < datetime.utcnow():
             raise HTTPException(status_code=400, detail="Token has expired.")
-            
+
         # 3. Find the user and update password
         user = session.get(models.User, db_token.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found.")
-            
+
         user.hashed_password = auth.get_password_hash(new_password)
         session.add(user)
-        
+
         # 4. Mark token as used
         db_token.used = True
         session.add(db_token)
-        
+
         session.commit()
-        
+
         return {"message": "Password updated successfully."}
+
+
+# Settings endpoints
+@router.get("/settings", response_model=UserSettingsRead)
+def get_settings(
+    user: models.User = Depends(get_current_user)
+):
+    """Get current user settings."""
+    return UserSettingsRead(
+        id=user.id,
+        username=user.username,
+        plan=user.plan,
+        base_currency=user.base_currency,
+        created_at=user.created_at
+    )
+
+
+@router.patch("/settings", response_model=UserSettingsRead)
+def update_settings(
+    settings: UserSettingsUpdate,
+    user: models.User = Depends(get_current_user),
+    session: Session = Depends(database.get_session),
+):
+    """Update user settings (currently only base_currency)."""
+    if settings.base_currency is not None:
+        user.base_currency = settings.base_currency.upper()
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    return UserSettingsRead(
+        id=user.id,
+        username=user.username,
+        plan=user.plan,
+        base_currency=user.base_currency,
+        created_at=user.created_at
+    )

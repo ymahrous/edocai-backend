@@ -33,7 +33,8 @@ def extract_with_google_gemini(image_bytes: bytes) -> dict:
             Analyze this document and extract the following information as a JSON object:
             {
             "vendor": "The name of the vendor/company issuing the document",
-            "total_amount": "The final total amount due, as a string (e.g., '$1,250.00'), always including currency symbol (e.g., '$', '€', '£'; not the actual language such as 'USD' or 'EUR')",
+            "total_amount": "The final total amount due, as a string (e.g., '$1,250.00'), always including currency symbol (e.g., '$', '€', '£')",
+            "currency": "The ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY'). Infer from symbol or context. Default to 'USD' if unclear.",
             "date": "The date of purchase/invoice in YYYY-MM-DD format",
             "category": "Classify the spend into EXACTLY ONE of these categories: Travel, Meals, Software, Office Supplies, Equipment, Marketing, Utilities, Rent, Insurance, Professional Services, or Other"
             }

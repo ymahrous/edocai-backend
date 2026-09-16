@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+gunicorn
 sqlmodel
 psycopg[binary,pool]
 supabase
@@ -17,3 +18,4 @@ httpx
 structlog
 stripe
 resend
+requests

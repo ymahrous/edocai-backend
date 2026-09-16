@@ -157,7 +157,7 @@ def update_category(
 # --- TAX SUMMARY EXPORT ---
 @router.get("/reports/tax-summary")
 def get_tax_summary(
-    year: int, 
+    year: int,
     session: Session = Depends(database.get_session),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -173,31 +173,78 @@ def get_tax_summary(
     ).all()
 
     summary = {}
+    detail_rows = []  # NEW: Store detailed rows for CSV
+
     for doc, ext in docs:
         raw_date = str(ext.extracted_data.get("date", ""))
         try:
             doc_year = int(raw_date.split("-")[0])
         except:
             continue
-            
+
         if doc_year == year:
             cat = ext.category
-            raw_amount = str(ext.extracted_data.get("total_amount", "0"))
-            clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
-            amount = float(clean_amount) if clean_amount else 0.0
-            
+
+            # NEW: Use converted_amount if available, fallback to parsing
+            if ext.converted_amount is not None:
+                amount = ext.converted_amount
+                original_amount = ext.original_amount
+                original_currency = ext.original_currency
+            else:
+                # Fallback for legacy extractions
+                raw_amount = str(ext.extracted_data.get("total_amount", "0"))
+                clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
+                amount = float(clean_amount) if clean_amount else 0.0
+                original_amount = amount
+                original_currency = current_user.base_currency
+
             summary[cat] = round(summary.get(cat, 0.0) + amount, 2)
+
+            # NEW: Store detail for CSV
+            detail_rows.append({
+                "date": raw_date,
+                "vendor": ext.extracted_data.get("vendor", ""),
+                "category": cat,
+                "original_amount": original_amount,
+                "original_currency": original_currency,
+                "converted_amount": amount,
+                "base_currency": current_user.base_currency,
+                "exchange_rate": ext.exchange_rate
+            })
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Category", f"Total Spend ({year})"])
+
+    # NEW: Enhanced header with currency info
+    first_currency = detail_rows[0]['original_currency'] if detail_rows else 'N/A'
+    writer.writerow([
+        "Date", "Vendor", "Category",
+        f"Original Amount ({first_currency})",
+        f"Converted Amount ({current_user.base_currency})",
+        "Exchange Rate"
+    ])
+
+    for row in sorted(detail_rows, key=lambda x: x["date"]):
+        writer.writerow([
+            row["date"],
+            row["vendor"],
+            row["category"],
+            f"{row['original_amount']:,.2f}",
+            f"{row['converted_amount']:,.2f}",
+            f"{row['exchange_rate']:.6f}" if row['exchange_rate'] else "N/A"
+        ])
+
+    # Summary section
+    writer.writerow([])  # Blank row
+    writer.writerow(["SUMMARY BY CATEGORY"])
+    writer.writerow(["Category", f"Total ({current_user.base_currency})"])
     for cat, total in sorted(summary.items()):
-        writer.writerow([cat, f"${total:,.2f}"])
-    
+        writer.writerow([cat, f"{total:,.2f}"])
+
     output.seek(0)
-    
+
     return StreamingResponse(
-        output, 
-        media_type="text/csv", 
+        output,
+        media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=edocAI_Tax_Summary_{year}.csv"}
     )
