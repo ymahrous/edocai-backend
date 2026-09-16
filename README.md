@@ -92,15 +92,68 @@ All routes are prefixed with `/api/v1`.
 | `POST` | `/auth/change-password` | Change password. Requires current password. |
 | `DELETE` | `/auth/delete` | Permanently delete the authenticated user. |
 
+### Settings
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/auth/settings` | Get the authenticated user's settings, including `base_currency`. |
+| `PATCH` | `/auth/settings` | Update settings. Currently supports changing `base_currency` (any valid ISO 4217 code). |
+
 ### Documents
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/upload/` | Upload a document (multipart). Returns immediately; processing happens in the background. |
 | `GET` | `/documents/` | List all documents owned by the authenticated user. |
-| `GET` | `/extraction/{document_id}` | Retrieve the structured extraction for a completed document. 404 if not yet processed. |
+| `GET` | `/extraction/{document_id}` | Retrieve the structured extraction for a completed document, including original and converted currency amounts. 404 if not yet processed. |
+| `GET` | `/reports/tax-summary?year=YYYY` | Pro-only. Streams a CSV with per-category totals and per-document currency detail for the given year. |
 
 All document and extraction routes require an `Authorization: Bearer <token>` header and are scoped to the authenticated user via `owner_id`.
+
+---
+
+## Multi-Currency Support
+
+edocAI extracts the original currency directly from each document and converts it to the user's preferred base currency, so spend reports and tax exports are always comparable across vendors that bill in different currencies.
+
+### How it works
+
+1. **Extraction**: Along with `vendor`, `total_amount`, and `date`, the Gemini extraction prompt also returns a `currency` field — an ISO 4217 code (`USD`, `EUR`, `GBP`, etc.) inferred from the currency symbol or document context. If Gemini can't infer it, this defaults to `USD`.
+2. **Conversion**: The Celery worker (`tasks.py`) calls `convert_currency()`, which hits the [exchangerate-api.com](https://www.exchangerate-api.com/) `/pair/{from}/{to}/{amount}` endpoint to convert the extracted amount into the user's `base_currency`.
+3. **Storage**: Both the original and converted values are persisted on the `Extraction` row, so nothing is lost even if exchange rates move later:
+
+   | Field | Description |
+   |---|---|
+   | `original_currency` | ISO 4217 code as extracted from the document |
+   | `original_amount` | The amount in its original currency |
+   | `converted_amount` | The amount converted into the user's `base_currency` |
+   | `exchange_rate` | The rate used for the conversion (`original → base`) |
+
+4. **Display & export**: `GET /extraction/{document_id}` returns all four fields (via `ExtractionWithVendor`). The `/reports/tax-summary` CSV export shows both the original amount/currency per line item and the converted total per category, so a user can audit exactly how a foreign-currency expense was translated into their base currency.
+
+### User base currency
+
+Every `User` has a `base_currency` field (default `"USD"`). Users can view and change it via:
+
+```bash
+GET /api/v1/auth/settings
+PATCH /api/v1/auth/settings   { "base_currency": "EUR" }
+```
+
+`base_currency` is validated against a fixed set of ISO 4217 codes (see `UserSettingsUpdate.validate_currency` in `models.py`) before being upper-cased and saved. Changing it only affects *future* conversions — existing `Extraction` rows keep the `converted_amount` that was calculated at the time they were processed; they are not retroactively re-converted.
+
+### Fallback behavior
+
+- **No `EXCHANGE_RATE_API_KEY` set**: conversion is skipped — `converted_amount` is set equal to `original_amount` with an `exchange_rate` of `1.0`, and a warning is logged.
+- **Exchange rate API call fails**: same fallback (original amount passed through, rate `1.0`) so document processing never fails purely because of a currency lookup.
+- **Same currency**: if `original_currency == base_currency`, the amount is returned as-is with rate `1.0` (no API call is made).
+- **Legacy extractions**: documents processed before multi-currency support was added have `null` values for all four currency fields; `/reports/tax-summary` falls back to parsing `total_amount` directly and assumes the user's current `base_currency` in that case.
+
+### Environment variable
+
+| Variable | Description |
+|---|---|
+| `EXCHANGE_RATE_API_KEY` | API key for [exchangerate-api.com](https://www.exchangerate-api.com/). Required for live currency conversion; without it, conversion silently no-ops (see Fallback behavior above). |
 
 ---
 
@@ -210,6 +263,7 @@ Test configuration lives in `pytest.ini`, with shared fixtures in `conftest.py`.
 | `UPSTASH_REDIS_ENDPOINT` | Upstash Redis host |
 | `UPSTASH_REDIS_PASSWORD` | Upstash Redis password |
 | `GEMINI_API_KEY` | Google AI Studio API key |
+| `EXCHANGE_RATE_API_KEY` | [exchangerate-api.com](https://www.exchangerate-api.com/) key, used for multi-currency conversion (see [Multi-Currency Support](#multi-currency-support)) |
 
 ---
 
