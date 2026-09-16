@@ -169,19 +169,27 @@ def sync_to_quickbooks(
         if not qb_conn:
             raise HTTPException(status_code=400, detail="QuickBooks not connected. Please connect in settings.")
 
+        # NEW
         # Prepare the QuickBooks Purchase (Expense) payload
         extracted = extraction.extracted_data
         vendor_name = extracted.get("vendor", "Unknown Vendor")
-        raw_amount = str(extracted.get("total_amount", "0"))
         raw_date = str(extracted.get("date", ""))
-        
-        # --- 1. ROBUST AMOUNT PARSING ---
-        # Strip everything except numbers, decimals, and minus signs
-        clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
-        try:
-            total_val = float(clean_amount)
-        except ValueError:
-            total_val = 0.0
+
+        # --- 1. AMOUNT: use the converted (base-currency) amount, not the raw
+        # extracted string, which is still in the document's ORIGINAL currency. ---
+        if extraction.converted_amount is not None and extraction.converted_currency == current_user.base_currency:
+            total_val = extraction.converted_amount
+            qb_currency = extraction.converted_currency
+        else:
+            # Legacy or stale-conversion row: fall back to the raw extracted amount
+            # and flag it so it isn't silently mislabeled as base_currency.
+            raw_amount = str(extracted.get("total_amount", "0"))
+            clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
+            try:
+                total_val = float(clean_amount)
+            except ValueError:
+                total_val = 0.0
+            qb_currency = extraction.original_currency or current_user.base_currency
 
         # --- 2. ROBUST DATE PARSING ---
         qb_date = None
@@ -227,6 +235,7 @@ def sync_to_quickbooks(
         # --- 5. BUILD THE BULLETPROOF QB PAYLOAD ---
         qb_payload = {
             "PaymentType": payment_type,
+            "CurrencyRef": {"value": qb_currency},  # NEW: tell QuickBooks what currency TotalAmt is in
             "AccountRef": {"value": "41", "name": "Opening Balance Equity"}, # The funding account
             "TotalAmt": total_val,
             # "EntityRef": {"value": "1", "name": vendor_name, "type": "Vendor"}, 

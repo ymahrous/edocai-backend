@@ -16,6 +16,13 @@ def get_amount(extracted_data: dict) -> float:
         except ValueError: return 0.0
     return 0.0
 
+def get_effective_amount(ext: models.Extraction, base_currency: str) -> tuple[float, bool]:
+    """See stats/stats_routes.py:get_effective_amount for full rationale.
+    Only trust converted_amount when it matches the caller's CURRENT base_currency."""
+    if ext.converted_amount is not None and ext.converted_currency == base_currency:
+        return ext.converted_amount, True
+    return get_amount(ext.extracted_data), False
+
 def parse_invoice_date(extracted_data: dict) -> datetime:
     """Tries to parse the invoice date from JSON. Falls back to upload date."""
     raw_date = extracted_data.get("date")
@@ -78,8 +85,12 @@ def get_spend_by_category(
     extractions = base_query(current_user.id, session, year, month)
     spend_map = {}
     for ext, doc in extractions:
+        # CORRECTED replacement for the "amount, reliable = ..." line:
+        amount, reliable = get_effective_amount(ext, current_user.base_currency)
+        if not reliable:
+            continue  # skip amounts whose currency doesn't match base_currency instead of blending them in
         category = ext.category or "Uncategorized"
-        spend_map[category] = spend_map.get(category, 0) + get_amount(ext.extracted_data)
+        spend_map[category] = spend_map.get(category, 0) + amount
 
     return [{"name": k, "value": round(v, 2)} for k, v in spend_map.items()]
 
@@ -96,11 +107,14 @@ def get_spend_by_vendor(
     extractions = base_query(current_user.id, session, year, month)
     vendor_map = {}
     for ext, doc in extractions:
+        amount, reliable = get_effective_amount(ext, current_user.base_currency)
+        if not reliable:
+            continue
         vendor_name = "Unknown"
         if ext.vendor_id:
             vendor = session.get(models.Vendor, ext.vendor_id)
             if vendor: vendor_name = vendor.canonical_name
-        vendor_map[vendor_name] = vendor_map.get(vendor_name, 0) + get_amount(ext.extracted_data)
+        vendor_map[vendor_name] = vendor_map.get(vendor_name, 0) + amount
 
     sorted_vendors = sorted(vendor_map.items(), key=lambda item: item[1], reverse=True)[:10]
     return [{"name": k, "value": round(v, 2)} for k, v in sorted_vendors]
@@ -117,11 +131,14 @@ def get_monthly_trend(
     extractions = base_query(current_user.id, session, year)
     month_map = {}
     for ext, doc in extractions:
+        amount, reliable = get_effective_amount(ext, current_user.base_currency)
+        if not reliable:
+            continue
         inv_date = parse_invoice_date(ext.extracted_data)
         check_date = inv_date if inv_date else doc.created_at
-        
+
         month_key = check_date.strftime("%Y-%m")
-        month_map[month_key] = month_map.get(month_key, 0) + get_amount(ext.extracted_data)
+        month_map[month_key] = month_map.get(month_key, 0) + amount
 
     sorted_months = sorted(month_map.items())
     return [{"month": k, "spend": round(v, 2)} for k, v in sorted_months]

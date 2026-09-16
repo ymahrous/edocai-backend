@@ -173,7 +173,8 @@ def get_tax_summary(
     ).all()
 
     summary = {}
-    detail_rows = []  # NEW: Store detailed rows for CSV
+    needs_reconversion = []  # rows whose converted_amount predates a base_currency change
+    detail_rows = []  # Store detailed rows for CSV
 
     for doc, ext in docs:
         raw_date = str(ext.extracted_data.get("date", ""))
@@ -185,22 +186,41 @@ def get_tax_summary(
         if doc_year == year:
             cat = ext.category
 
-            # NEW: Use converted_amount if available, fallback to parsing
-            if ext.converted_amount is not None:
+            # Only trust converted_amount if it was actually converted into the
+            # user's CURRENT base_currency. If base_currency was changed after this
+            # document was processed, converted_amount is stale (in the old currency)
+            # and must not be blended with correctly-converted rows.
+            stale_conversion = (
+                ext.converted_amount is not None
+                and ext.converted_currency is not None
+                and ext.converted_currency != current_user.base_currency
+            )
+
+            if ext.converted_amount is not None and not stale_conversion:
                 amount = ext.converted_amount
                 original_amount = ext.original_amount
                 original_currency = ext.original_currency
             else:
-                # Fallback for legacy extractions
+                # Fallback for legacy extractions AND stale (pre-currency-change) rows.
+                # Report the ORIGINAL extracted amount/currency rather than mislabeling
+                # a stale converted_amount as the current base_currency.
                 raw_amount = str(ext.extracted_data.get("total_amount", "0"))
                 clean_amount = re.sub(r'[^\d\.-]', '', raw_amount)
                 amount = float(clean_amount) if clean_amount else 0.0
-                original_amount = amount
-                original_currency = current_user.base_currency
+                original_amount = ext.original_amount if ext.original_amount is not None else amount
+                original_currency = ext.original_currency if ext.original_currency else current_user.base_currency
 
-            summary[cat] = round(summary.get(cat, 0.0) + amount, 2)
+            if stale_conversion or ext.converted_amount is None:
+                needs_reconversion.append({
+                    "date": raw_date,
+                    "vendor": ext.extracted_data.get("vendor", ""),
+                    "original_amount": original_amount,
+                    "original_currency": original_currency,
+                })
+            else:
+                summary[cat] = round(summary.get(cat, 0.0) + amount, 2)
 
-            # NEW: Store detail for CSV
+            # Store detail for CSV
             detail_rows.append({
                 "date": raw_date,
                 "vendor": ext.extracted_data.get("vendor", ""),
@@ -215,7 +235,7 @@ def get_tax_summary(
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # NEW: Enhanced header with currency info
+    # Enhanced header with currency info
     first_currency = detail_rows[0]['original_currency'] if detail_rows else 'N/A'
     writer.writerow([
         "Date", "Vendor", "Category",
@@ -240,6 +260,14 @@ def get_tax_summary(
     writer.writerow(["Category", f"Total ({current_user.base_currency})"])
     for cat, total in sorted(summary.items()):
         writer.writerow([cat, f"{total:,.2f}"])
+
+    if needs_reconversion:
+        writer.writerow([])
+        writer.writerow([f"NOTE: {len(needs_reconversion)} document(s) excluded from the summary above"])
+        writer.writerow(["because your base currency changed after they were processed."])
+        writer.writerow(["Date", "Vendor", "Original Amount", "Original Currency"])
+        for row in needs_reconversion:
+            writer.writerow([row["date"], row["vendor"], f"{row['original_amount']:,.2f}", row["original_currency"]])
 
     output.seek(0)
 

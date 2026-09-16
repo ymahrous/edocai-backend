@@ -18,6 +18,20 @@ def get_amount(extracted_data: dict) -> float:
         return 0.0
     except: return 0.0
 
+def get_effective_amount(ext: "models.Extraction", base_currency: str) -> tuple[float, bool]:
+    """
+    Returns (amount_in_base_currency, is_reliable).
+    Only trusts ext.converted_amount when it was actually converted into the
+    CALLER'S CURRENT base_currency. Otherwise the amount is in some other
+    currency (original extracted currency, or a stale base_currency from
+    before the user changed their setting) and must not be summed as if it
+    were base_currency — is_reliable=False signals the caller to exclude it
+    from totals instead of silently corrupting them.
+    """
+    if ext.converted_amount is not None and ext.converted_currency == base_currency:
+        return ext.converted_amount, True
+    return get_amount(ext.extracted_data), False
+
 def parse_invoice_date(extracted_data: dict) -> datetime:
     raw_date = extracted_data.get("date")
     if not raw_date: return None
@@ -63,15 +77,21 @@ def get_dashboard_stats(
     ).all()
 
     month_spend = 0.0
+    excluded_count = 0
     for ext, doc in extractions:
         inv_date = parse_invoice_date(ext.extracted_data)
         check_date = inv_date if inv_date else doc.created_at
-        
+
         if check_date >= start_of_month and check_date <= now:
-            month_spend += get_amount(ext.extracted_data)
+            amount, reliable = get_effective_amount(ext, current_user.base_currency)
+            if reliable:
+                month_spend += amount
+            else:
+                excluded_count += 1
 
     return {
         "processed": total_processed, # Now immune to deletions!
         "synced": synced_count,
-        "month_spend": round(month_spend, 2)
+        "month_spend": round(month_spend, 2),
+        "excluded_from_month_spend": excluded_count  # docs skipped: wrong/stale currency data
     }

@@ -103,11 +103,12 @@ def process_document_task(document_id: str):
                 extracted_data=extracted_data,
                 confidence_score=confidence,
                 category=category,
-                vendor_id=vendor_id, # NEW: Save the matched vendor ID
-                # NEW: Store currency fields
+                vendor_id=vendor_id, # Save the matched vendor ID
+                # Store currency fields
                 original_currency=original_currency,
                 original_amount=original_amount,
                 converted_amount=round(converted_amount, 2),
+                converted_currency=base_currency,  # snapshot what currency converted_amount is actually in
                 exchange_rate=round(exchange_rate, 6)
             )
             session.add(extraction)
@@ -121,7 +122,8 @@ def process_document_task(document_id: str):
                     current_user_id=document.owner_id,
                     extraction_data=extracted_data,
                     current_doc_id=document.id,
-                    session=session
+                    session=session,
+                    current_amount=round(converted_amount, 2)
                 )
 
                 if flags:

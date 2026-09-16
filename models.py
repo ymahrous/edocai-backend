@@ -41,12 +41,17 @@ class Extraction(SQLModel, table=True):
     extracted_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     confidence_score: float = 0.0
     category: Optional[str] = Field(default=None)
+    # NEW
     vendor_id: Optional[str] = Field(default=None, foreign_key="vendor.id", index=True)
     vendor: Optional["Vendor"] = Relationship()
     # NEW: Currency fields
     original_currency: Optional[str] = Field(default=None, sa_column=Column(String(3)))  # ISO 4217
     original_amount: Optional[float] = Field(default=None)
-    converted_amount: Optional[float] = Field(default=None)  # In user's base_currency
+    converted_amount: Optional[float] = Field(default=None)
+    # Currency `converted_amount` is actually denominated in — a snapshot of the
+    # user's base_currency AT PROCESSING TIME. Do not assume this equals the
+    # user's *current* base_currency; they can differ if the user changed it since.
+    converted_currency: Optional[str] = Field(default=None, sa_column=Column(String(3)))
     exchange_rate: Optional[float] = Field(default=None)
 
 # --- BILLING MODELS ---
@@ -108,11 +113,13 @@ class ExtractionWithVendor(BaseModel):
     confidence_score: float
     category: Optional[str] = None
     vendor_id: Optional[str] = None
+    # NEW
     vendor: Optional[VendorRead] = None # The nested vendor object!
     # NEW: Currency fields
     original_currency: Optional[str] = None
     original_amount: Optional[float] = None
     converted_amount: Optional[float] = None
+    converted_currency: Optional[str] = None  # currency converted_amount is actually in
     exchange_rate: Optional[float] = None
 
     class Config:
